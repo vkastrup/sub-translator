@@ -1,0 +1,5 @@
+# Core translation + formats
+anthropic>=0.69      # Claude provider (structured outputs, adaptive thinking, batches)
+openai>=1.60         # every OpenAI-compatible provider: Mistral, Groq, OpenRouter, Ollama
+pysubs2>=1.7         # SRT, VTT, ASS/SSA, MicroDVD, MPL2, TMP, JSON
+pycaption>=2.2       # TTML, DFXP, iTT, SAMI, SCC
