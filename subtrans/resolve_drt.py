@@ -107,7 +107,9 @@ class DrtTimeline:
     @staticmethod
     def _dump(root: ET.Element, path: str) -> None:
         xml = ET.tostring(root, encoding="unicode")
-        with open(path, "w", encoding="utf-8") as f:
+        # newline="" so Python does not rewrite every \n as \r\n on Windows: the rest of the
+        # archive is copied through byte for byte, and only this file would change shape.
+        with open(path, "w", encoding="utf-8", newline="") as f:
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n' + _UNESC.sub(r"\1\2::", xml))
 
     # --------------------------------------------------------------- inspection

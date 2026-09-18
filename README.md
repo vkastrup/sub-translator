@@ -16,16 +16,29 @@ anything.
 
 ## Install
 
+macOS:
+
 ```bash
 git clone <this repo> && cd sub_translator
 ./install.sh --resolve --provider mistral --key <your key>
 ```
 
+Windows (PowerShell — the same options, same result):
+
+```powershell
+git clone <this repo>; cd sub_translator
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Resolve -Provider mistral -Key <your key>
+```
+
 Get a free Mistral key at [console.mistral.ai](https://console.mistral.ai/) — no credit card
-needed. Leave off `--resolve` if you only want the command line tool.
+needed. Leave off `--resolve` / `-Resolve` if you only want the command line tool.
 
 Resolve integration requires **Resolve Studio**; Workflow Integrations aren't available in the
-free version.
+free version, and Blackmagic doesn't support them on Linux at all. Installing the plugin on
+Windows writes into `%PROGRAMDATA%`, so run that shell as Administrator; on macOS it writes
+into `/Library/Application Support`. Python 3.9+ is needed on both — on Windows, install it
+from [python.org](https://www.python.org/downloads/windows/) with *Add python.exe to PATH*
+ticked.
 
 ## Using it in Resolve
 
@@ -46,6 +59,9 @@ venv/bin/python -m subtrans.cli --input in.srt --source da --target sv
 venv/bin/python -m subtrans.cli --input in.srt --target de --output out.vtt
 venv/bin/python -m subtrans.cli --directory ./deliverables --pattern '*_EN.srt' --target fr
 ```
+
+On Windows the interpreter is `venv\Scripts\python` instead of `venv/bin/python`; every
+flag below is identical.
 
 Output format follows the extension you ask for, so `--output out.vtt` converts as it
 translates. Naming is handled for you: `spot_EN.srt` becomes `spot_FR.srt`, and an existing

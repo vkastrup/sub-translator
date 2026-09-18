@@ -3,9 +3,6 @@
     python -m subtrans.cli --input in.srt --target sv
     python -m subtrans.cli --input in.srt --target sv --output out.vtt
     python -m subtrans.cli --directory samples/ --target sv --pattern '*_DA.srt'
-
-Progress is written to stderr so stdout stays clean for the output path, which is what the
-Resolve plugin reads.
 """
 
 from __future__ import annotations
@@ -26,6 +23,20 @@ from .providers import build
 
 def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
+
+
+def force_utf8_io() -> None:
+    """Make stdout/stderr UTF-8 regardless of platform.
+
+    On Windows a redirected stream still defaults to the ANSI code page, so one accented
+    character in a filename or a progress line ends the run with a UnicodeEncodeError —
+    and the Resolve plugin always reads this process through a pipe. No-op on macOS.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # not a real stream, or already detached
+            pass
 
 
 def load_env() -> None:
@@ -77,6 +88,7 @@ def translate_file(args, inp: str, tr: Translator) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8_io()
     ap = argparse.ArgumentParser(
         prog="subtrans", description="Translate subtitle files with Claude."
     )

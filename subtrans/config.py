@@ -13,12 +13,13 @@ Resolution order, first match wins:
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 __all__ = [
     "PROVIDERS", "ProviderSpec", "Settings", "ConfigError", "credential_for",
-    "resolve", "load_dotenv", "configured_providers", "DEFAULT_PROVIDER",
+    "resolve", "load_dotenv", "write_env", "configured_providers", "DEFAULT_PROVIDER",
 ]
 
 DEFAULT_PROVIDER = "mistral"
@@ -162,6 +163,37 @@ def load_dotenv(path: str | os.PathLike | None = None, override: bool = False) -
         if override or key not in os.environ:
             os.environ[key] = value
     return found
+
+
+def write_env(provider: str, key: str = "", path: str | os.PathLike | None = None) -> str:
+    """Upsert SUBTRANS_PROVIDER, and the provider's key, into .env. Returns a summary line.
+
+    Both installers (install.sh, install.ps1) call this rather than editing .env themselves,
+    so neither has to carry its own copy of the provider -> env-var-name mapping.
+    """
+    provider = provider.strip().lower()
+    if provider not in PROVIDERS:
+        raise ConfigError(
+            f"unknown provider {provider!r}. Available: {', '.join(sorted(PROVIDERS))}"
+        )
+    key_var = PROVIDERS[provider].env_key
+    target = Path(path) if path else PROJECT_ROOT / ".env"
+    text = target.read_text(encoding="utf-8") if target.exists() else ""
+
+    def upsert(text: str, name: str | None, value: str) -> str:
+        if not name:
+            return text
+        # Matches the live line and a commented-out template line alike, so .env.example
+        # placeholders get filled in rather than shadowed by an appended duplicate.
+        pattern = re.compile(rf"^#?\s*{re.escape(name)}=.*$", re.M)
+        line = f"{name}={value}"
+        return pattern.sub(line, text, count=1) if pattern.search(text) else text.rstrip() + f"\n{line}\n"
+
+    text = upsert(text, "SUBTRANS_PROVIDER", provider)
+    if key:
+        text = upsert(text, key_var, key)
+    target.write_text(text, encoding="utf-8")
+    return f"{target} set to provider={provider}" + (f", {key_var} written" if key else "")
 
 
 def credential_for(spec: ProviderSpec) -> str | None:

@@ -4,21 +4,15 @@ SubTranslator — DaVinci Resolve Workflow Integration script.
 Translates a subtitle track on the current timeline and delivers the result as a new
 subtitle track on a new timeline named "<timeline> [XX]".
 
-Install (macOS):
-    cp SubTranslator.py "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/"
-then set SUBTRANS_DIR below, and run it from
-    Workspace -> Workflow Integrations -> SubTranslator
+Install — use install.sh (macOS) / install.ps1 (Windows), which copy this file into the
+Workflow Integration Plugins folder and patch SUBTRANS_DIR on the way:
 
-Why a new timeline: Resolve's scripting API can read subtitle cues but cannot create them.
-AppendToTimeline ignores trackIndex and recordFrame for subtitle media, and locking the
-other tracks turns the append into a silent no-op. The only frame-accurate route is
-Resolve's own .drt format — export the timeline, clone the subtitle track with translated
-text, re-import. ImportTimelineFromFile always makes a new timeline, so that is what you get.
-The source timeline is never modified.
+    macOS:   /Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/
+    Windows: %PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\
 
-This file runs under Resolve's embedded Python, which cannot see the project venv, so it
-imports nothing beyond the standard library plus subtrans.resolve_drt (also stdlib-only).
-The translation itself is run as a subprocess against the venv.
+Then run it from Workspace -> Workflow Integrations -> SubTranslator.
+Workflow Integrations are Resolve Studio only, and Windows/macOS only — not Linux.
+
 """
 
 import os
@@ -28,11 +22,20 @@ import sys
 import tempfile
 import traceback
 
-# ── Set this to wherever you cloned the project ────────────────────────────────
-SUBTRANS_DIR = "/Volumes/RGBa2025/DevFolder/sub_translator"
+# ── Set this to wherever you cloned the project (the installers patch this line) ──
+SUBTRANS_DIR = r"<your/path/here>"
 # ───────────────────────────────────────────────────────────────────────────────
 
-VENV_PYTHON = os.path.join(SUBTRANS_DIR, "venv", "bin", "python")
+IS_WINDOWS = os.name == "nt"
+# A venv puts the interpreter in Scripts\python.exe on Windows, bin/python everywhere else.
+VENV_PYTHON = os.path.join(SUBTRANS_DIR, "venv", *(
+    ("Scripts", "python.exe") if IS_WINDOWS else ("bin", "python")
+))
+# Resolve's embedded Python is a GUI process, so on Windows every child process it spawns
+# flashes up its own console window. Harmless but alarming; suppress it. The flag does not
+# exist off Windows, and Popen rejects a non-zero value there, so 0 is the POSIX case.
+NO_CONSOLE = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+MONO_FONT = "Consolas" if IS_WINDOWS else "Menlo"
 
 if SUBTRANS_DIR not in sys.path:
     sys.path.insert(0, SUBTRANS_DIR)
@@ -85,6 +88,18 @@ def read_srt_texts(path):
     return texts
 
 
+def safe_filename(name):
+    """Strip characters Windows forbids in a filename.
+
+    The exported .drt is named after the timeline, because ImportTimelineFromFile names the
+    new timeline after the file. A timeline called "Ep 01: Pilot" is legal in Resolve but
+    cannot be a filename on Windows, and the export would fail on the colon. The panel
+    renames the timeline properly after the import, so only the temp file is affected.
+    """
+    cleaned = "".join("-" if c in '<>:"/\\|?*' or ord(c) < 32 else c for c in name).strip(" .")
+    return cleaned or "timeline"
+
+
 def timeline_fps(tl):
     """Real playback rate. Resolve reports 30.0/60.0 for the NTSC rates, which are 1000/1001
     slower; SRT timings are wall-clock, so correct for it."""
@@ -124,7 +139,7 @@ def run_translation(resolve_app, project, tl, track_index, target, cpl, effort, 
     wanted_name = relabel(tl.GetName(), target)
     drt_in = os.path.join(tmp, "source.drt")
     # ImportTimelineFromFile names the timeline after the file, so name the file well.
-    drt_out = os.path.join(tmp, wanted_name + ".drt")
+    drt_out = os.path.join(tmp, safe_filename(wanted_name) + ".drt")
     srt_in = os.path.join(tmp, "source.srt")
     srt_out = os.path.join(tmp, "translated.srt")
 
@@ -169,6 +184,7 @@ def run_translation(resolve_app, project, tl, track_index, target, cpl, effort, 
         proc = subprocess.Popen(
             cmd, cwd=SUBTRANS_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             encoding="utf-8", errors="replace", bufsize=1, env=env,
+            creationflags=NO_CONSOLE,
         )
         for line in proc.stdout:
             line = line.strip()
@@ -247,7 +263,7 @@ def main():
             ]),
             ui.Button({"ID": "Go", "Text": "Translate", "Weight": 0}),
             ui.TextEdit({"ID": "Log", "ReadOnly": True, "Weight": 1,
-                         "Font": ui.Font({"Family": "Menlo", "PixelSize": 11})}),
+                         "Font": ui.Font({"Family": MONO_FONT, "PixelSize": 11})}),
         ]),
     )
     items = win.GetItems()

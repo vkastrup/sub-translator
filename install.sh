@@ -8,6 +8,8 @@
 #
 # The --provider/--key form is the one to use when setting up an edit suite: it writes the
 # studio key into .env so a producer never has to create or paste an API key.
+#
+# Windows: use install.ps1, which takes the same options as -Resolve/-Provider/-Key.
 
 set -euo pipefail
 
@@ -41,26 +43,11 @@ venv/bin/python -c "import anthropic, openai, pysubs2, pycaption" && echo "    o
 [ -f .env ] || cp .env.example .env
 
 if [ -n "$PROVIDER" ]; then
-    # env var name for the provider's key, straight from the registry — no duplicate list
-    KEY_VAR="$(venv/bin/python -c "from subtrans.config import PROVIDERS; print(PROVIDERS['$PROVIDER'].env_key or '')")"
-    python3 - "$PROVIDER" "$KEY_VAR" "$KEY" <<'PY'
-import re, sys
-provider, key_var, key = sys.argv[1], sys.argv[2], sys.argv[3]
-text = open(".env", encoding="utf-8").read()
-
-def upsert(text, name, value):
-    if not name:
-        return text
-    pattern = re.compile(rf"^#?\s*{re.escape(name)}=.*$", re.M)
-    line = f"{name}={value}"
-    return pattern.sub(line, text, count=1) if pattern.search(text) else text.rstrip() + f"\n{line}\n"
-
-text = upsert(text, "SUBTRANS_PROVIDER", provider)
-if key:
-    text = upsert(text, key_var, key)
-open(".env", "w", encoding="utf-8").write(text)
-print(f"==> .env set to provider={provider}" + (f", {key_var} written" if key else ""))
-PY
+    # The .env rewrite lives in subtrans/config.py (stdlib only) so this script and
+    # install.ps1 cannot drift on which env var a given provider actually reads.
+    venv/bin/python -c \
+        "import sys; from subtrans.config import write_env; print('==> ' + write_env(*sys.argv[1:]))" \
+        "$PROVIDER" "$KEY"
     chmod 600 .env
 fi
 
@@ -75,7 +62,9 @@ if [ "$WITH_RESOLVE" = "1" ]; then
         exit 1
     fi
     # The plugin needs to know where this checkout lives; patch the constant on install.
-    sed "s|^SUBTRANS_DIR = .*|SUBTRANS_DIR = \"$HERE\"|" resolve/SubTranslator.py \
+    # Written as a raw string literal so the Windows installer can patch the same line
+    # without its backslashes being read as escapes.
+    sed "s|^SUBTRANS_DIR = .*|SUBTRANS_DIR = r\"$HERE\"|" resolve/SubTranslator.py \
         > "$PLUGIN_DIR/SubTranslator.py"
     echo "==> installed plugin to Workflow Integration Plugins/"
     echo "    restart Resolve, then: Workspace > Workflow Integrations > SubTranslator"
